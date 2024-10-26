@@ -1,0 +1,322 @@
+---
+title: 'Lab 2: Enrichment Analyses'
+subtitle: "BMI 206"
+author: "__Abolfazl Arab__"
+date: "10/24/2024"
+output: html_document
+---
+
+<br> <br>
+
+Import needed packages and set a random number seed
+
+```{r, message=FALSE}
+#load packages
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("regioneR")
+BiocManager::install('BSgenome.Hsapiens.UCSC.hg19')
+
+library(regioneR)
+library(GenomicRanges)
+library(tidyverse)
+
+set.seed(10)
+```
+
+<br>
+
+Read in BED formatted region files: all tested regions and two sets of positives Note: these are in hg19 human genome assembly coordinates
+
+```{r}
+all=toGRanges(read.table("all.bed",sep="\t"))
+hits1=toGRanges(read.table("hits1.bed",sep="\t"))
+hits2=toGRanges(read.table("hits2.bed",sep="\t"))
+```
+
+<br>
+
+**Q1. How many regions are in hits1? How many in hits2?**
+
+```{r, eval=FALSE}
+hits1 %>% length; hits2 %>% length
+```
+
+<br>
+
+**Q2. Are hits1 and hits2 proper subsets of all the tested regions? Check how many of each set overlaps a region in all.**
+
+```{r, eval=FALSE}
+
+numOverlaps(hits1, all, count.once=TRUE) == hits1 %>% length
+
+numOverlaps(hits2, all, count.once=TRUE) == hits2 %>% length
+```
+
+<br>
+
+The next few questions explore the overlap of genomic regions in hits1 and hits2.
+
+**Q3. How many regions overlap? How many regions are exactly identical?**
+
+```{r, eval=FALSE}
+
+overlapRegions(hits1, hits2)
+```
+
+<br>
+
+**Q4. Generate a set of random genomic regions of the same size as hits1. Match these to the mean and sd of the genomic length of the hits1 regions.**
+
+\- Do the random genomic regions overlap hits2 more or less than hits1 does?
+
+*Zero. At least using the current seed it doesn't.*
+
+\- How much do the random genomic regions overlap all tested regions?
+
+*Zero. Same as above!*
+
+\- Repeatedly generate genomic regions to compute a z-score for the overlap of hits1 with hits2
+
+*Done!*
+
+\- Use the set of overlaps with random regions to test the null hypothesis that hits2 overlaps hits1 more than expected compared to totally random regions
+
+*Done!*
+
+\- What is the smallest p-value you could have gotten?
+
+$1 / ( \text{total number of tests} + 1)$
+
+\- How do the results change with number of resamples? Random seed?
+
+*Increasing the number of resamples makes the test more sensitive and allow achieving lower p-values for a rare event.* *`overlapPermTest` function gives a* *warning for a very low `n`*.
+
+*Using Different seed didn't change the p-values in the results.*
+
+```{r,eval=FALSE}
+
+hits_random = createRandomRegions(
+  nregions=length(hits1), 
+  length.mean=mean(hits1@ranges@width), 
+  length.sd=sd(hits1@ranges@width)
+)
+
+# - Do the random genomic regions overlap hits2 more or less than hits1 does?
+numOverlaps(hits_random, hits1); numOverlaps(hits_random, hits2)
+
+# - How much do the random genomic regions overlap all tested regions? 
+numOverlaps(hits_random, all)
+
+# - Repeatedly generate genomic regions to compute a z-score for the overlap of hits1 with hits2
+
+# - Use the set of overlaps with random regions to test the null hypothesis that hits2 overlaps hits1 more than expected compared to totally random regions 
+
+pt = overlapPermTest(
+  hits1, 
+  hits2, 
+  ntimes=1000,
+  alternative = 'greater',
+  force.parallel=TRUE
+)
+
+plot(pt)
+
+# - What is the smallest p-value you could have gotten? 
+# 1 / ( total number of tests + 1)
+# assuming ntimes = 1000
+1 / (1000 + 1)
+
+# - How do the results change with number of resamples? Random seed?
+
+for(n in c(10,50,100,500,1000)){
+  pt_tmp = suppressWarnings(overlapPermTest(
+    hits1, 
+    hits2, 
+    ntimes=n, 
+    alternative = 'greater',
+    force.parallel=TRUE
+  ))
+  
+  print(n)
+  print(suppressWarnings(pt_tmp$numOverlaps))
+
+}
+
+for(s in c(10,42,90,100,800)){
+  set.seed(s)
+  pt_tmp = suppressWarnings(overlapPermTest(
+    hits1, 
+    hits2, 
+    ntimes=1000, 
+    alternative = 'greater',
+    force.parallel=TRUE
+  ))
+  
+  print(s)
+  print(suppressWarnings(pt_tmp$numOverlaps))
+
+}
+```
+
+\
+
+<br>
+
+**Q5. Repeat Q4 switching the roles of hits1 and hits2. Are conclusions similar?**
+
+*To me it seems both tests give similar results and even exact same p-values* `Alternative: greater`*. I think the test occurs on the overlap of these two inputs so it makes sense that the result doesn't change here.*
+
+```{r, eval=FALSE}
+pt21 = overlapPermTest(
+  hits2, 
+  hits1, 
+  ntimes=1000,
+  alternative = 'greater',
+  force.parallel=TRUE
+)
+
+print(pt$numOverlaps)
+print(pt21$numOverlaps)
+```
+
+<br>
+
+**Q6. Create a random bootstrap sample of regions from all tested regions.**
+
+\- Do these random regions overlap hits2 more or less than hits1 does?
+
+*Both of hits1 and hits2 overlap with `all_boot` with the same number of regions.*
+
+\- How does this test differ from the one in Q4? Look at the z-score and p-value.
+
+*Here I think the z-scores from the bootstrapping had a wider distribution with more data points which looks like a normal distribution for* $H_0$ *and the observed values (i.e.* *hits2 overlaps with hits1) are significantly less than the* $H_0$*, with the p-value reported in Q4!*
+
+<br>
+
+```{r, eval=FALSE}
+all_boot = sample(all, replace=TRUE) 
+
+all_boot %>% intersect(hits1)
+
+all_boot %>% intersect(hits2)
+
+
+pt_1_vs_2_in_all <- permTest(
+  A=hits1, 
+  randomize.function=resampleRegions, 
+  universe=all_sample,
+  ntimes = 1000, 
+  evaluate.function=numOverlaps, B=hits2
+)
+
+print(pt_1_vs_2_in_all$numOverlaps)
+plot(pt_1_vs_2_in_all)
+```
+
+\
+<br>
+
+**Q7. Repeat Q6 switching the role of hits1 and hits2. Are conclusions similar?**
+
+*Yes!*
+
+```{r,eval=FALSE}
+pt_2_vs_1_in_all <- permTest(
+  A=hits2,
+  randomize.function=resampleRegions,
+  universe=all,
+  ntimes = 1000, 
+  evaluate.function=numOverlaps, B=hits1
+)
+
+print(pt_2_vs_1_in_all$numOverlaps)
+
+plot(pt_2_vs_1_in_all)
+```
+
+<br>
+
+**Q8. Which null distribution would you use in your own research and why?**
+
+[note from Katie]
+
+I actually researched this during my PhD. It is an old paper in terms of data / technology but the main message about permutations being a very strong null is still relevant (differences in means and covariance structures are removed).
+
+Bootstrap can preserve covariance but make means equal. However, in small sample sizes (\<20) permutations may control type 1 error better (no need to estimate complex distributions correctly).
+
+\
+Remember: bootstrap does not inherently give a null distribution- it just estimates the distribution, specifically the variance of a test statistic. To make a null distribution requires a transformation, e.g., setting means of two groups to be equal or setting an overall mean to zero.
+
+*I think Q8 is asking for what Katie saied. As I understand, for studies with fewer sample sizes the bootstrap with large number of sampling can be less powerful than permutation. Thus, I would say the right null distribution depends on the nature of data, experiment design, and biological question.*
+
+<br> The next few questions involve downloading genomics data. You can choose sets of regions, e.g, gene annotation, ChIPseq, RNAseq, ATACseq, GWAS SNPs
+
+```{r,eval=FALSE}
+
+# BiocManager::install('GenomicDistributions')
+# BiocManager::install('AnnotationHub')
+# BiocManager::install('GenomicFeatures')
+# BiocManager::install("txdbmaker")
+
+library(GenomicDistributions)
+library(AnnotationHub)
+library(GenomicFeatures)
+
+gtf  <- rtracklayer::import('gencode.v47lift37.annotation.gtf.gz')
+
+txdb <- makeTxDbFromGFF('gencode.v47lift37.annotation.gtf.gz')
+```
+
+```{r,eval=FALSE}
+
+plotPartitions(
+  calcPartitionsRef(gtf[subjectHits(findOverlaps(hits1,gtf))], "hg19")
+)
+
+plotPartitions(
+  calcPartitionsRef(gtf[subjectHits(findOverlaps(hits2, gtf))], "hg19")
+)
+
+```
+
+<br>
+
+**Q9. Using data you download, can you infer what function was tested in the assay that discovered hits1 and hits2?**
+
+**Choose data sets that will be informative about candidate functions.**
+
+**Compute overlaps or mean values of the downloaded data for the union of hits1 and hits2**
+
+**Guess what type of genomic element these hits are (i.e., what assay was performed))**
+
+*I had hard time learning how to work with AnnotationHub. However, I could at least check what portion of the regions in hits1 and hits2 are overlapping with promoters of different genes. I can not say exactly what assay this is but I can guess it's somehow related to gene regulatory elements because it contains regions in a very far distance to the TSSs.*
+
+```{r, eval=FALSE}
+
+hits1_ov <- findOverlaps(promoters(txdb), hits1)
+hits2_ov <- findOverlaps(promoters(txdb), hits2)
+
+
+length(unique(subjectHits(hits1_ov))) / length(hits1)
+length(unique(subjectHits(hits2_ov))) / length(hits2)
+
+hits1$distance = data.frame(distanceToNearest(hits1,TSS_hg19))$distance
+hits2$distance = data.frame(distanceToNearest(hits2,TSS_hg19))$distance
+
+hist(hits1$distance, breaks = 100)
+hist(hits2$distance, breaks = 100)
+```
+
+<br>
+
+**BONUS Q10. Do you think hits1 and hits2 function in the same cell type?**
+
+\- Build on your analysis in Q9 by separately testing overlaps with hits1 and hits2. Choose datasets that are from several different cell types
+
+**BONUS Q11: Try matching the random regions more closely to regions in hits1**
+
+\- On what variables will you match them? e.g., spacing, chromosome, GC-content, distance to nearest gene, masking
+
+\- How does matching affect the z-score and p-value?
