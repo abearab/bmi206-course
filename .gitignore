@@ -4,7 +4,8 @@
 .RData
 .Ruserdata
 
-*h5ad
+*.zip
+*.h5ad
 *.h5ad.gz
 *.gtf
 *.gtf.gz
