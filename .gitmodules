@@ -1,3 +1,6 @@
 [submodule "BMI-206-Class-Project"]
 	path = BMI-206-Class-Project
 	url = https://github.com/abearab/BMI-206-Class-Project
+[submodule "ml-pitfalls"]
+	path = ml-pitfalls
+	url = https://github.com/abearab/ml-pitfalls
