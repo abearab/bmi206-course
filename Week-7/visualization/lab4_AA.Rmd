@@ -1,0 +1,144 @@
+---
+title: 'Lab 4: Visualization'
+Subtitle: "BMI 206"
+author: "Abolfazl Arab"
+date: "12/5/2024"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+```
+
+<br> <br>
+
+Read in the genes-by-cells read count matrix sc.mat
+
+```{r}
+load("visualization.RData")
+```
+
+<br>
+
+**Take a look at a few rows and columns of the matrix**
+
+```{r, eval=TRUE}
+as.matrix(sc.mat)[1:5,1:5]
+```
+
+<br>
+
+**How many cells?**
+
+*i.e. number of columns in `sc.mat` object.*
+
+```{r, eval=TRUE}
+print(paste0('Number of cells: ',ncol(sc.mat)))
+```
+
+<br>
+
+**How many genes?** *i.e. number of rows in `sc.mat` object.*
+
+```{r,eval=TRUE}
+print(paste0('Number of genes: ',nrow(sc.mat)))
+```
+
+<br>
+
+**Produce a summary of counts for the first cell**
+
+```{r, eval=TRUE}
+summary(sc.mat[,1])
+```
+
+<br>
+
+**Produce a summary of counts for the APOL2 gene**
+
+```{r, eval=TRUE}
+summary(sc.mat['APOL2',])
+```
+
+<br>
+
+**Get just the genes that are expressed in at least 10 cells**
+
+```{r, eval=TRUE}
+sc.mat.expr=sc.mat[which(rowSums(sc.mat %>% as.matrix > 0)>=10),]
+```
+
+<br>
+
+**How many genes are retained?**
+
+```{r, eval=TRUE}
+
+print(paste0('Number of genes retained:  ',nrow(sc.mat.expr)))
+```
+
+<br>
+
+**Normalize to median depth for each cell and take the log** \* hint: add a pseudocount of 1 to avoid log(0)
+
+```{r, eval=TRUE}
+#median depth for each cell
+n.umis=median(colSums(sc.mat.expr %>% as.matrix))
+sc.mat.norm=log((sc.mat.expr / n.umis) + 1)
+```
+
+<br>
+
+**Visualize distribution of normalized expression values for first cell**
+
+```{r,eval=TRUE}
+hist(sc.mat.norm[,1], breaks=50)
+```
+
+<br>
+
+**Visualize distribution of normalized expression values for first gene**
+
+```{r, eval=TRUE}
+hist(sc.mat.norm[1,], breaks=50)
+```
+
+<br> <br>
+
+\*NOTE: prcomp and Rtsne are slow on a matrix this big, so you can use the saved data frame sc.df that was loaded with the input count matrix two dimensions for PCA and two for tSNE were saved as columns "pc1", "pc2", "tsne1", "tsne2"
+
+<br>
+
+**Run PCA on the normalized expression matrix**
+
+```{r,eval=FALSE}
+pcs=prcomp(sc.mat.norm, rank.=30)
+```
+
+<br>
+
+**Visualize PCA results**
+
+```{r,eval=TRUE}
+ggplot(sc.df, aes(x=pc1, y=pc2, colour=cell.type)) + 
+  geom_point()
+```
+
+<br>
+
+**Run tsne on the normalized expression matrix using PCA as starting values**
+
+```{r,eval=TRUE}
+# install.packages("Rtsne")
+library(Rtsne)
+tsne=Rtsne(pcs$x)
+```
+
+<br>
+
+**Visualize TSNE results**
+
+```{r,eval=TRUE}
+ggplot(sc.df, aes(x=tsne1, y=tsne2, colour=cell.type)) + 
+  geom_point()
+```
